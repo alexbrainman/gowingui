@@ -2,14 +2,14 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-// +build windows
-
-package main
+package winapi
 
 import (
 	"syscall"
 	"unsafe"
 )
+
+type HDC syscall.Handle
 
 type Wndclassex struct {
 	Size       uint32
@@ -27,8 +27,15 @@ type Wndclassex struct {
 }
 
 type Point struct {
-	X uintptr
-	Y uintptr
+	X int32
+	Y int32
+}
+
+type Rect struct {
+	Left   int32
+	Top    int32
+	Right  int32
+	Bottom int32
 }
 
 type Msg struct {
@@ -38,6 +45,23 @@ type Msg struct {
 	Lparam  uintptr
 	Time    uint32
 	Pt      Point
+}
+
+type MinMaxInfo struct {
+	Reserved     Point
+	MaxSize      Point
+	MaxPosition  Point
+	MinTrackSize Point
+	MaxTrackSize Point
+}
+
+type PaintStruct struct {
+	HDC       HDC
+	Erase     int32
+	Paint     Rect
+	Restore   int32
+	IncUpdate int32
+	Reserved  [32]byte
 }
 
 const (
@@ -74,10 +98,50 @@ const (
 	WS_EX_CLIENTEDGE = 0x200
 
 	// Some windows messages
-	WM_CREATE  = 1
-	WM_DESTROY = 2
-	WM_CLOSE   = 16
-	WM_COMMAND = 273
+	WM_CREATE            = 1
+	WM_DESTROY           = 2
+	WM_MOVE              = 3
+	WM_SIZE              = 5
+	WM_ACTIVATE          = 6
+	WM_SETFOCUS          = 7
+	WM_KILLFOCUS         = 8
+	WM_SETTEXT           = 12
+	WM_GETTEXT           = 13
+	WM_GETTEXTLENGTH     = 14
+	WM_PAINT             = 15
+	WM_CLOSE             = 16
+	WM_QUIT              = 18
+	WM_ERASEBKGND        = 20
+	WM_SHOWWINDOW        = 24
+	WM_ACTIVATEAPP       = 28
+	WM_SETCURSOR         = 32
+	WM_MOUSEACTIVATE     = 33
+	WM_GETMINMAXINFO     = 36
+	WM_WINDOWPOSCHANGING = 70
+	WM_WINDOWPOSCHANGED  = 71
+	WM_GETICON           = 127
+	WM_NCCREATE          = 129
+	WM_NCDESTROY         = 130
+	WM_NCCALCSIZE        = 131
+	WM_NCHITTEST         = 132
+	WM_NCPAINT           = 133
+	WM_NCACTIVATE        = 134
+	WM_NCMOUSEMOVE       = 160
+	BM_SETSTATE          = 243
+	WM_SYSKEYDOWN        = 260
+	WM_COMMAND           = 273
+	WM_SYSCOMMAND        = 274
+	WM_CTLCOLOREDIT      = 307
+	WM_CTLCOLORBTN       = 309
+	WM_CTLCOLORSTATIC    = 312
+	WM_MOUSEMOVE         = 512
+	WM_LBUTTONDOWN       = 513
+	WM_LBUTTONUP         = 514
+	WM_PARENTNOTIFY      = 528
+	WM_CAPTURECHANGED    = 533
+	WM_IME_SETCONTEXT    = 641
+	WM_IME_NOTIFY        = 642
+	WM_USER              = 1024
 
 	// Some button control styles
 	BS_DEFPUSHBUTTON = 1
@@ -87,10 +151,32 @@ const (
 	COLOR_BTNFACE = 15
 
 	// Default window position
+	// TODO: fix num conversion
 	CW_USEDEFAULT = 0x80000000 - 0x100000000
 
 	// Show window default style
-	SW_SHOWDEFAULT = 10
+	SW_HIDE            = 0
+	SW_NORMAL          = 1
+	SW_SHOWNORMAL      = 1
+	SW_SHOWMINIMIZED   = 2
+	SW_MAXIMIZE        = 3
+	SW_SHOWMAXIMIZED   = 3
+	SW_SHOWNOACTIVATE  = 4
+	SW_SHOW            = 5
+	SW_MINIMIZE        = 6
+	SW_SHOWMINNOACTIVE = 7
+	SW_SHOWNA          = 8
+	SW_RESTORE         = 9
+	SW_SHOWDEFAULT     = 10
+	SW_FORCEMINIMIZE   = 11
+
+	HWND_DESKTOP = syscall.Handle(0)
+	HWND_MESSAGE = ^syscall.Handle(0) - 3 + 1
+
+	// GetAncestor flags
+	GA_PARENT    = 1
+	GA_ROOT      = 2
+	GA_ROOTOWNER = 3
 )
 
 var (
@@ -112,6 +198,8 @@ var (
 	IDI_INFORMATION = IDI_ASTERISK
 )
 
+// api
+
 //sys	GetModuleHandle(modname *uint16) (handle syscall.Handle, err error) = GetModuleHandleW
 //sys	RegisterClassEx(wndclass *Wndclassex) (atom uint16, err error) = user32.RegisterClassExW
 //sys	CreateWindowEx(exstyle uint32, classname *uint16, windowname *uint16, style uint32, x int32, y int32, width int32, height int32, wndparent syscall.Handle, menu syscall.Handle, instance syscall.Handle, param uintptr) (hwnd syscall.Handle, err error) = user32.CreateWindowExW
@@ -119,6 +207,7 @@ var (
 //sys	DestroyWindow(hwnd syscall.Handle) (err error) = user32.DestroyWindow
 //sys	PostQuitMessage(exitcode int32) = user32.PostQuitMessage
 //sys	ShowWindow(hwnd syscall.Handle, cmdshow int32) (wasvisible bool) = user32.ShowWindow
+//sys	IsWindowVisible(hwnd syscall.Handle) (visible bool) = user32.IsWindowVisible
 //sys	UpdateWindow(hwnd syscall.Handle) (err error) = user32.UpdateWindow
 //sys	GetMessage(msg *Msg, hwnd syscall.Handle, MsgFilterMin uint32, MsgFilterMax uint32) (ret int32, err error) [failretval==-1] = user32.GetMessageW
 //sys	TranslateMessage(msg *Msg) (done bool) = user32.TranslateMessage
@@ -128,6 +217,18 @@ var (
 //sys	SetCursor(cursor syscall.Handle) (precursor syscall.Handle, err error) = user32.SetCursor
 //sys	SendMessage(hwnd syscall.Handle, msg uint32, wparam uintptr, lparam uintptr) (lresult uintptr) = user32.SendMessageW
 //sys	PostMessage(hwnd syscall.Handle, msg uint32, wparam uintptr, lparam uintptr) (err error) = user32.PostMessageW
+//sys	GetWindowText(hwnd syscall.Handle, str *uint16, maxCount int32) (len int32, err error) = user32.GetWindowTextW
+//sys	GetWindowTextLength(hwnd syscall.Handle) (len int32, err error) = user32.GetWindowTextLengthW
+//sys	SetWindowText(hwnd syscall.Handle, str *uint16) (err error) = user32.SetWindowTextW
+//sys	EnableWindow(hwnd syscall.Handle, enable bool) (wasenabled bool) = user32.EnableWindow
+//sys	IsWindowEnabled(hwnd syscall.Handle) (enabled bool) = user32.IsWindowEnabled
+//sys	GetCursorPos(point *Point) (err error) = user32.GetCursorPos
+
+//sys	SetWindowSubclass(hwnd syscall.Handle, fn uintptr, id uintptr, refData *uint32) (err error) = comctl32.SetWindowSubclass
+//sys	DefSubclassProc(hwnd syscall.Handle, msg uint32, wparam uintptr, lparam uintptr) (lresult uintptr) = comctl32.DefSubclassProc
+//sys	RemoveWindowSubclass(hwnd syscall.Handle, fn uintptr, id uintptr) (err error) = comctl32.RemoveWindowSubclass
+
+//sys	GetCurrentThreadId() (id uint32)
 
 func MakeIntResource(id uint16) *uint16 {
 	return (*uint16)(unsafe.Pointer(uintptr(id)))

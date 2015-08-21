@@ -16,4 +16,7 @@ clean:
 	rm -f gowingui.exe
 
 zwinapi.go: winapi.go
-	(echo '// +build windows'; go run $(GOROOT)/src/syscall/mksyscall_windows.go -- $<) > $@
+	(echo '// +build windows'; \
+	$(GOROOT)/src/pkg/syscall/mksyscall_windows.pl $<) \
+		| gofmt \
+		> $@
